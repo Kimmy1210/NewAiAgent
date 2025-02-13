@@ -4,6 +4,7 @@ import json
 import openai
 
 OUTPUT_PATH = "Output"
+architecture_data = None
 
 ###############################################################################
 # AI Agent for Generating Software Architecture and Files from ChatGPT
@@ -72,7 +73,7 @@ def ask_chatgpt_for_architecture(software_description):
         return None
 
 
-def display_architecture_proposal(architecture_data):
+def display_architecture_proposal():
     """
     Nicely format the architecture data for the user to review.
     """
@@ -116,17 +117,25 @@ def get_user_approval():
         else:
             print("Please type 'yes' or 'no'.")
 
-def create_folder_or_file(path):
-    if os.path.exists(path):
-        return
-    if "." in path:
-        open(path, 'a').close()
+def create_folder_or_file(path, item):
+    if item == "":
+        full_item = path
     else:
-        os.makedirs(path)
+        full_item = os.path.join(path, item)
+    if os.path.exists(full_item):
+        return
 
-def generate_software_files(architecture_data):
-    if not os.path.exists(OUTPUT_PATH):
-        os.makedirs(OUTPUT_PATH)
+    if "." in item:
+        file_content = ask_chatgpt_for_file_content(path, item)
+        if file_content:
+            save_file_to_output(path, item, file_content)
+        else:
+            print(f"Failed to retrieve content for {item}.")
+    else:
+        os.makedirs(full_item)
+
+def generate_software_files():
+    create_folder_or_file(OUTPUT_PATH, "")
 
     file_scaffolding = architecture_data.get("file_scaffolding", {})
     file_list = []
@@ -134,8 +143,7 @@ def generate_software_files(architecture_data):
     # If the scaffolding is a dict with folder -> [files], handle that:
     if isinstance(file_scaffolding, dict):
         for folder, files in file_scaffolding.items():
-            path = os.path.join("Output/", folder)
-            create_folder_or_file(path)
+            create_folder_or_file(OUTPUT_PATH, folder)
             if isinstance(files, list):
                 for f in files:
                     # Remove trailing slash if present
@@ -143,7 +151,7 @@ def generate_software_files(architecture_data):
                     file_list.append((folder, f))
             elif isinstance(files, dict):
                 for folder, comments in files.items():
-                    create_folder_or_file(os.path.join(path, folder))
+                    create_folder_or_file(OUTPUT_PATH, folder)
 
     # If the scaffolding is a list of files
     elif isinstance(file_scaffolding, list):
@@ -155,14 +163,14 @@ def generate_software_files(architecture_data):
     # Prompt ChatGPT to generate each file
     for folder, filename in file_list:
         print(f"\nRequesting ChatGPT to generate '{filename}' in folder '{folder}'...")
-        file_content = ask_chatgpt_for_file_content(architecture_data, folder, filename)
+        file_content = ask_chatgpt_for_file_content(folder, filename)
         if file_content:
             save_file_to_output(folder, filename, file_content)
         else:
             print(f"Failed to retrieve content for {filename}.")
 
 
-def ask_chatgpt_for_file_content(architecture_data, folder, filename):
+def ask_chatgpt_for_file_content(folder, filename):
     """
     Ask ChatGPT to generate the file content for each file based on the architecture.
     This is a simplified prompt. You can refine it for better instructions.
@@ -204,9 +212,8 @@ def save_file_to_output(folder, filename, content):
     Save the generated content to the 'Output' folder, creating subfolders as necessary.
     """
     # Construct the full path
-    output_folder = os.path.join("Output", folder)
-    if folder and not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    output_folder = os.path.join(OUTPUT_PATH, folder)
+    create_folder_or_file(OUTPUT_PATH, folder)
 
     file_path = os.path.join(output_folder, filename)
     try:
@@ -217,18 +224,55 @@ def save_file_to_output(folder, filename, content):
         print(f"Error saving file {file_path}: {e}")
 
 
+def ask_chatgpt_for_one_file_content(folder, filename):
+    """
+    Ask ChatGPT to generate one file content for each file based on the architecture.
+    This is a simplified prompt. You can refine it for better instructions.
+    """
+    system_message = {
+        "role": "system",
+        "content": (
+            "You are a software engineer. Given a file name, the folder structure, and the overall architecture, "
+            "generate the content for that file. Be concise and ensure it fits the previously proposed architecture."
+        )
+    }
+
+    user_message = {
+        "role": "user",
+        "content": (
+            f"Software Architecture: {architecture_data.get('software_architecture', '')}\n"
+            f"Technical Stacks: {architecture_data.get('technical_stacks', [])}\n"
+            f"Folder: {folder}\n"
+            f"Filename: {filename}\n\n"
+            f"Please generate the file content now."
+        )
+    }
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[system_message, user_message],
+            temperature=0.2
+        )
+        file_content = response.choices[0].message["content"]
+        return file_content
+    except Exception as e:
+        print(f"Error while asking ChatGPT for file content: {e}")
+        return None
+
 def main():
     # 1. Get software description
     software_description = get_software_description_from_user()
 
     # 2. Ask ChatGPT for architecture
+    global architecture_data
     architecture_data = ask_chatgpt_for_architecture(software_description)
     if not architecture_data:
         print("Could not retrieve a valid architecture proposal from ChatGPT. Exiting.")
         return
 
     # 3. Display architecture to user
-    display_architecture_proposal(architecture_data)
+    display_architecture_proposal()
 
     # 4. Ask for user approval
     if not get_user_approval():
@@ -238,7 +282,7 @@ def main():
         print("Architecture approved. Proceeding with file generation...")
 
     # 5. Generate software files
-    generate_software_files(architecture_data)
+    generate_software_files()
 
     print("\nAll done! Check the 'Output' folder for generated files.")
 
