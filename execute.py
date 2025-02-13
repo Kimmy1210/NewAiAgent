@@ -22,6 +22,7 @@ def get_software_description_from_user():
     print("(For example: 'A To-Do list web application with user authentication, a database, and a responsive UI.')")
     description = input("> ")
     return description
+    # return "generate student management system code"
 
 
 def ask_chatgpt_for_architecture(software_description):
@@ -143,6 +144,7 @@ def generate_software_files():
     # If the scaffolding is a dict with folder -> [files], handle that:
     if isinstance(file_scaffolding, dict):
         for folder, files in file_scaffolding.items():
+            path_1 = os.path.join(OUTPUT_PATH, folder)
             create_folder_or_file(OUTPUT_PATH, folder)
             if isinstance(files, list):
                 for f in files:
@@ -151,7 +153,7 @@ def generate_software_files():
                     file_list.append((folder, f))
             elif isinstance(files, dict):
                 for folder, comments in files.items():
-                    create_folder_or_file(OUTPUT_PATH, folder)
+                    create_folder_or_file(path_1, folder)
 
     # If the scaffolding is a list of files
     elif isinstance(file_scaffolding, list):
@@ -211,11 +213,8 @@ def save_file_to_output(folder, filename, content):
     """
     Save the generated content to the 'Output' folder, creating subfolders as necessary.
     """
-    # Construct the full path
-    output_folder = os.path.join(OUTPUT_PATH, folder)
-    create_folder_or_file(OUTPUT_PATH, folder)
 
-    file_path = os.path.join(output_folder, filename)
+    file_path = os.path.join(folder, filename)
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
